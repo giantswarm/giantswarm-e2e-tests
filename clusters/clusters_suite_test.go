@@ -1,12 +1,16 @@
 package clusters_test
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
-	config "sigs.k8s.io/controller-runtime"
+	appv1alpha1 "github.com/giantswarm/apiextensions-application/api/v1alpha1"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	clientcmd "k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubectl/pkg/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,7 +19,7 @@ import (
 
 var (
 	kubeConfigPath string
-	ctrlclient     client.Client
+	k8sClient      client.Client
 	err            error
 )
 
@@ -31,14 +35,22 @@ var _ = BeforeEach(func() {
 		Fail("E2E_KUBECONFIG_PATH env var not set")
 	}
 
-	// ctrlclient, err = GetManagementClusterK8sClient()
+	k8sClient, err = GetManagementClusterK8sClient()
+	Expect(err).NotTo(HaveOccurred())
 })
 
 func GetManagementClusterK8sClient() (client.Client, error) {
-	return client.New(config.GetConfigOrDie(), client.Options{})
+	configBytes, err := os.ReadFile(kubeConfigPath)
+	Expect(err).NotTo(HaveOccurred())
+
+	config, err := clientcmd.RESTConfigFromKubeConfig(configBytes)
+	Expect(err).NotTo(HaveOccurred())
+
+	appv1alpha1.AddToScheme(scheme.Scheme)
+	return client.New(config, client.Options{Scheme: scheme.Scheme})
 }
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var letters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
 
 func randSeq(n int) string {
 	b := make([]rune, n)
@@ -46,4 +58,9 @@ func randSeq(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func GenerateName(prefix string) string {
+	sequence := randSeq(10)
+	return fmt.Sprintf("%s%s", prefix, sequence)[:9]
 }
