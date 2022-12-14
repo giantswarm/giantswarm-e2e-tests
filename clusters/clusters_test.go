@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	app2 "github.com/giantswarm/app/v6/pkg/app"
@@ -32,12 +31,10 @@ var _ = Describe("Clusters", func() {
 		kubeConfigFlag := fmt.Sprintf("--kubeconfig=%s", kubeConfigPath)
 		nameFlag := strings.ToLower(fmt.Sprintf("--name=%s", clusterName))
 
-		createOrg := kubectl.GS("template", "organization", "--name", clusterName, "--output", orgFile.Name())
+		session := kubectl.GS("template", "organization", "--name", clusterName, "--output", orgFile.Name())
 		Eventually(session, "15s").Should(gexec.Exit(0))
 
-		applyOrgCommand := exec.Command("kubectl", kubeConfigFlag, "apply", "-f", orgFile.Name())
-		session, err = gexec.Start(applyOrgCommand, GinkgoWriter, GinkgoWriter)
-		Expect(err).NotTo(HaveOccurred())
+		session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", orgFile.Name())
 		Eventually(session, "10s").Should(gexec.Exit(0))
 
 		Eventually(func() error {
@@ -50,14 +47,10 @@ var _ = Describe("Clusters", func() {
 			return err
 		}).Should(Succeed())
 
-		createCluster := exec.Command("kubectl-gs", "template", "cluster", "--provider", "capa", "--organization", clusterName, "--description", "e2e test", nameFlag, kubeConfigFlag, "--output", clusterFile.Name())
-		session, err = gexec.Start(createCluster, GinkgoWriter, GinkgoWriter)
-		Expect(err).NotTo(HaveOccurred())
+		session = kubectl.GS("template", "cluster", "--provider", "capa", "--organization", clusterName, "--description", "e2e test", nameFlag, kubeConfigFlag, "--output", clusterFile.Name())
 		Eventually(session, "15s").Should(gexec.Exit(0))
 
-		applyManifestsCommand := exec.Command("kubectl", kubeConfigFlag, "apply", "-f", clusterFile.Name())
-		session, err = gexec.Start(applyManifestsCommand, GinkgoWriter, GinkgoWriter)
-		Expect(err).NotTo(HaveOccurred())
+		session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", clusterFile.Name())
 		Eventually(session, "10s").Should(gexec.Exit(0))
 
 		Eventually(func() error {
