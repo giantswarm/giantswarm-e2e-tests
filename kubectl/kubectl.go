@@ -8,8 +8,8 @@ import (
 	"github.com/onsi/gomega/gexec"
 )
 
-func GS(args ...string) *gexec.Session {
-	command := exec.Command("kubectl-gs", args...)
+func Kubectl(args ...string) *gexec.Session {
+	command := exec.Command("kubectl", args...)
 	session, err := gexec.Start(command, ginkgo.GinkgoWriter, ginkgo.GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
 	return session
