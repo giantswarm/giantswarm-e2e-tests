@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	appv1alpha1 "github.com/giantswarm/apiextensions-application/api/v1alpha1"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +19,7 @@ import (
 	"github.com/giantswarm/giantswarm-e2e-tests/kubectl"
 )
 
-type ClusterFixture struct {
+type Cluster struct {
 	managementClusterClient ctrl.Client
 	workloadClusterClient   ctrl.Client
 
@@ -26,8 +27,8 @@ type ClusterFixture struct {
 	organizationName    string
 }
 
-func (f *ClusterFixture) SetUp(kubeConfigPath string) {
-	mcClient, err := getManagementClusterK8sClient()
+func (f *Cluster) SetUp(kubeConfigPath string) {
+	mcClient, err := getManagementClusterK8sClient(kubeConfigPath)
 	Expect(err).NotTo(HaveOccurred())
 
 	f.managementClusterClient = mcClient
@@ -66,23 +67,23 @@ func (f *ClusterFixture) SetUp(kubeConfigPath string) {
 	Eventually(session, "10s").Should(gexec.Exit(0))
 }
 
-func (f *ClusterFixture) TearDown() error {
+func (f *Cluster) TearDown() error {
 	return nil
 }
 
-func (f *ClusterFixture) GetWrokloadClusterKubeClient() (*ctrl.Client, error) {
-	return nil, nil
+func (f *Cluster) GetWrokloadClusterKubeClient() ctrl.Client {
+	return nil
 }
 
-func (f *ClusterFixture) GetManagementClusterKubeClient() (*ctrl.Client, error) {
-	return nil, nil
+func (f *Cluster) GetManagementClusterKubeClient() ctrl.Client {
+	return f.managementClusterClient
 }
 
-func (f *ClusterFixture) GetWorkloadClusterName() string {
+func (f *Cluster) GetWorkloadClusterName() string {
 	return ""
 }
 
-func (f *ClusterFixture) GetOrganizationName() string {
+func (f *Cluster) GetOrganizationName() string {
 	return ""
 }
 
