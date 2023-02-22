@@ -11,9 +11,11 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubectl/pkg/scheme"
+	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/giantswarm/giantswarm-e2e-tests/kubectl"
@@ -23,30 +25,41 @@ type Cluster struct {
 	managementClusterClient ctrl.Client
 	workloadClusterClient   ctrl.Client
 
+	managementClusterKubeConfigPath string
+
+	workloadClusterManifestsPath string
+	organizationManifestsPath    string
+
 	workloadClusterName string
 	organizationName    string
 }
 
 func (f *Cluster) SetUp(kubeConfigPath string) {
+	f.managementClusterKubeConfigPath = kubeConfigPath
+
 	mcClient, err := getManagementClusterK8sClient(kubeConfigPath)
 	Expect(err).NotTo(HaveOccurred())
 
 	f.managementClusterClient = mcClient
-	f.workloadClusterName = GenerateName("e2e")
+	f.workloadClusterName = generateName("e2e")
 	f.organizationName = f.workloadClusterName
 
 	clusterFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-cluster-%s-", f.workloadClusterName))
 	Expect(err).NotTo(HaveOccurred())
+	defer clusterFile.Close()
+	f.workloadClusterManifestsPath = clusterFile.Name()
 
 	orgFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-org-%s-", f.workloadClusterName))
 	Expect(err).NotTo(HaveOccurred())
+	defer orgFile.Close()
+	f.organizationManifestsPath = orgFile.Name()
 
-	kubeConfigFlag := fmt.Sprintf("--kubeconfig=%s", kubeConfigPath)
 	nameFlag := strings.ToLower(fmt.Sprintf("--name=%s", f.workloadClusterName))
 
 	session := kubectl.GS("template", "organization", "--name", f.workloadClusterName, "--output", orgFile.Name())
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
+	kubeConfigFlag := f.getKubeconfigFlag()
 	session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", orgFile.Name())
 	Eventually(session, "10s").Should(gexec.Exit(0))
 
@@ -67,11 +80,30 @@ func (f *Cluster) SetUp(kubeConfigPath string) {
 	Eventually(session, "10s").Should(gexec.Exit(0))
 }
 
-func (f *Cluster) TearDown() error {
-	return nil
+func (f *Cluster) TearDown() {
+	kubeConfigFlag := f.getKubeconfigFlag()
+	session := kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.workloadClusterManifestsPath)
+	Eventually(session, "10s").Should(gexec.Exit(0))
+
+	var getErr error
+	Eventually(func() error {
+		cluster := &capi.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      f.workloadClusterName,
+				Namespace: f.GetOrganizationNamespace(),
+			},
+		}
+
+		getErr = f.managementClusterClient.Get(context.Background(), ctrl.ObjectKeyFromObject(cluster), cluster)
+		return getErr
+	}, "10m").ShouldNot(Succeed())
+	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue())
+
+	session = kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.organizationManifestsPath)
+	Eventually(session, "10s").Should(gexec.Exit(0))
 }
 
-func (f *Cluster) GetWrokloadClusterKubeClient() ctrl.Client {
+func (f *Cluster) GetWorkloadClusterKubeClient() ctrl.Client {
 	return nil
 }
 
@@ -80,11 +112,19 @@ func (f *Cluster) GetManagementClusterKubeClient() ctrl.Client {
 }
 
 func (f *Cluster) GetWorkloadClusterName() string {
-	return ""
+	return f.workloadClusterName
 }
 
 func (f *Cluster) GetOrganizationName() string {
-	return ""
+	return f.organizationName
+}
+
+func (f *Cluster) GetOrganizationNamespace() string {
+	return fmt.Sprintf("org-%s", f.organizationName)
+}
+
+func (f *Cluster) getKubeconfigFlag() string {
+	return fmt.Sprintf("--kubeconfig=%s", f.managementClusterKubeConfigPath)
 }
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
@@ -97,7 +137,7 @@ func randSeq(n int) string {
 	return string(b)
 }
 
-func GenerateName(prefix string) string {
+func generateName(prefix string) string {
 	sequence := randSeq(10)
 	return fmt.Sprintf("%s%s", prefix, sequence)[:9]
 }
@@ -110,5 +150,6 @@ func getManagementClusterK8sClient(kubeConfigPath string) (ctrl.Client, error) {
 	Expect(err).NotTo(HaveOccurred())
 
 	appv1alpha1.AddToScheme(scheme.Scheme)
+	capi.AddToScheme(scheme.Scheme)
 	return ctrl.New(config, ctrl.Options{Scheme: scheme.Scheme})
 }
