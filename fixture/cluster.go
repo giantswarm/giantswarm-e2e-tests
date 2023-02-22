@@ -104,7 +104,7 @@ func (f *Cluster) TearDown() {
 }
 
 func (f *Cluster) GetWorkloadClusterKubeClient() ctrl.Client {
-	return nil
+	return f.workloadClusterClient
 }
 
 func (f *Cluster) GetManagementClusterKubeClient() ctrl.Client {

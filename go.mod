@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/giantswarm/app/v6 v6.15.1
-	github.com/onsi/ginkgo/v2 v2.6.0
+	github.com/onsi/ginkgo/v2 v2.7.0
 	github.com/onsi/gomega v1.24.1
 	k8s.io/client-go v0.26.0
 	sigs.k8s.io/cluster-api v1.3.1
