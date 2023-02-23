@@ -36,7 +36,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	clusterFixture = fixture.Cluster{}
-	clusterFixture.SetUp(kubeConfigPath)
+	clusterFixture.SetUp(kubeConfigPath, "--provider", "capa")
 })
 
 var _ = AfterSuite(func() {

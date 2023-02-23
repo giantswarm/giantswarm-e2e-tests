@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubectl/pkg/scheme"
 	capi "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -34,7 +35,7 @@ type Cluster struct {
 	organizationName    string
 }
 
-func (f *Cluster) SetUp(kubeConfigPath string) {
+func (f *Cluster) SetUp(kubeConfigPath string, kubectlgsParams ...string) {
 	f.managementClusterKubeConfigPath = kubeConfigPath
 
 	mcClient, err := getManagementClusterK8sClient(kubeConfigPath)
@@ -73,7 +74,10 @@ func (f *Cluster) SetUp(kubeConfigPath string) {
 		return err
 	}).Should(Succeed())
 
-	session = kubectl.GS("template", "cluster", "--provider", "capa", "--organization", f.organizationName, "--description", "e2e test", nameFlag, kubeConfigFlag, "--output", clusterFile.Name())
+	params := []string{"template", "cluster"}
+	params = append(params, kubectlgsParams...)
+	params = append(params, "--organization", f.organizationName, "--description", "e2e test", nameFlag, kubeConfigFlag, "--output", clusterFile.Name())
+	session = kubectl.GS(params...)
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
 	session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", clusterFile.Name())
@@ -81,6 +85,7 @@ func (f *Cluster) SetUp(kubeConfigPath string) {
 }
 
 func (f *Cluster) TearDown() {
+	ctx := context.Background()
 	kubeConfigFlag := f.getKubeconfigFlag()
 	session := kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.workloadClusterManifestsPath)
 	Eventually(session, "10s").Should(gexec.Exit(0))
@@ -94,10 +99,20 @@ func (f *Cluster) TearDown() {
 			},
 		}
 
-		getErr = f.managementClusterClient.Get(context.Background(), ctrl.ObjectKeyFromObject(cluster), cluster)
+		getErr = f.managementClusterClient.Get(ctx, ctrl.ObjectKeyFromObject(cluster), cluster)
 		return getErr
-	}, "10m").ShouldNot(Succeed())
+	}, "15m").ShouldNot(Succeed())
 	Expect(k8serrors.IsNotFound(getErr)).To(BeTrue())
+
+	// The next patch it's a hack that we currently need when deleting clusters, it should go away eventually.
+	patch := []byte(`{"metadata":{"finalizers":null}}`)
+	err := f.managementClusterClient.Patch(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: f.GetOrganizationNamespace(),
+			Name:      fmt.Sprintf("%s-bastion-ignition", f.GetWorkloadClusterName()),
+		},
+	}, ctrl.RawPatch(types.MergePatchType, patch))
+	Expect(err).ToNot(HaveOccurred())
 
 	session = kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.organizationManifestsPath)
 	Eventually(session, "10s").Should(gexec.Exit(0))

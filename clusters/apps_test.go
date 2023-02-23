@@ -22,7 +22,7 @@ var _ = Describe("Apps", func() {
 
 		managementClusterKubeClient := clusterFixture.GetManagementClusterKubeClient()
 		appList := &v1alpha1.AppList{}
-		err := managementClusterKubeClient.List(ctx, appList, ctrl.InNamespace(orgNamespace))
+		err := managementClusterKubeClient.List(ctx, appList, ctrl.InNamespace(orgNamespace), ctrl.MatchingLabels{"giantswarm.io/managed-by": fmt.Sprintf("%s-%s", clusterName, "default-apps")})
 		Expect(err).ShouldNot(HaveOccurred())
 
 		for _, app := range appList.Items {
