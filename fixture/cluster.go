@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	appv1alpha1 "github.com/giantswarm/apiextensions-application/api/v1alpha1"
-	app2 "github.com/giantswarm/app/v6/pkg/app"
+	appgs "github.com/giantswarm/app/v6/pkg/app"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	corev1 "k8s.io/api/core/v1"
@@ -58,6 +58,10 @@ func (f *Cluster) SetUp(ctx context.Context, kubectlgsParams ...string) {
 	if workloadClusterKubeConfigPath != "" {
 		f.workloadClusterName = os.Getenv("E2E_WC_NAME")
 		f.organizationName = os.Getenv("E2E_WC_ORG_NAME")
+		if f.workloadClusterName == "" || f.organizationName == "" {
+			log.Fatal("When passing E2E_WC_KUBECONFIG_PATH env var, you need to also pass E2E_WC_NAME and E2E_WC_ORG_NAME")
+		}
+
 		return
 	}
 
@@ -151,7 +155,7 @@ func (f *Cluster) TearDown(ctx context.Context) {
 
 func (f *Cluster) GetApp(ctx context.Context, name, namespace string) func() *appv1alpha1.App {
 	return func() *appv1alpha1.App {
-		app := app2.NewCR(app2.Config{
+		app := appgs.NewCR(appgs.Config{
 			Name:      name,
 			Namespace: namespace,
 		})
