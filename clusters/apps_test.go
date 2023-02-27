@@ -12,7 +12,7 @@ import (
 	. "github.com/giantswarm/giantswarm-e2e-tests/matchers"
 )
 
-var _ = Describe("Apps", func() {
+var _ = Describe("Apps", Ordered, func() {
 	It("deploys the default apps", func() {
 		ctx := context.Background()
 		clusterName := clusterFixture.GetWorkloadClusterName()
@@ -20,7 +20,7 @@ var _ = Describe("Apps", func() {
 		defaultAppsAppName := fmt.Sprintf("%s-%s", clusterName, "default-apps")
 		// We need to wait for default-apps to be deployed before we can check all apps.
 		logger.Info("Waiting for default-apps-aws to be marked as 'deployed'.")
-		Eventually(clusterFixture.GetApp(ctx, defaultAppsAppName, orgNamespace), "30m").Should(HaveAppStatus("deployed"))
+		Eventually(clusterFixture.GetApp(ctx, defaultAppsAppName, orgNamespace), "30s").Should(HaveAppStatus("deployed"))
 
 		managementClusterKubeClient := clusterFixture.GetManagementClusterKubeClient()
 		appList := &v1alpha1.AppList{}

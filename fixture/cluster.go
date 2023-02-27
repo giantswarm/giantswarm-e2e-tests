@@ -86,7 +86,7 @@ func (f *Cluster) createWorkloadCluster(ctx context.Context, name string, kubect
 	session = kubectl.Kubectl(f.getKubeconfigFlag(), "apply", "-f", clusterFile.Name())
 	Eventually(session, "10s").Should(gexec.Exit(0))
 
-	Eventually(f.GetApp(ctx, name, fmt.Sprintf("org-%s", name)), "10s").Should(HaveAppStatus("deployed"))
+	Eventually(f.GetApp(ctx, name, f.GetOrganizationNamespace()), "10s").Should(HaveAppStatus("deployed"))
 }
 
 func (f *Cluster) createOrganization(ctx context.Context, mcClient ctrl.Client, organizationName string) (string, string) {
@@ -105,7 +105,7 @@ func (f *Cluster) createOrganization(ctx context.Context, mcClient ctrl.Client, 
 	Eventually(func() error {
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("org-%s", organizationName),
+				Name: f.GetOrganizationNamespace(),
 			},
 		}
 		err := mcClient.Get(ctx, ctrl.ObjectKeyFromObject(ns), ns)
