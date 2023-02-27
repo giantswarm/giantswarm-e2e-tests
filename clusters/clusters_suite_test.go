@@ -29,6 +29,7 @@ func TestClusters(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	ctx := context.Background()
 	rand.Seed(time.Now().UnixNano())
 	kubeConfigPath := os.Getenv("E2E_KUBECONFIG_PATH")
 	if kubeConfigPath == "" {
@@ -36,11 +37,12 @@ var _ = BeforeSuite(func() {
 	}
 
 	clusterFixture = fixture.Cluster{}
-	clusterFixture.SetUp(kubeConfigPath, "--provider", "capa")
+	clusterFixture.SetUp(ctx, kubeConfigPath, "--provider", "capa")
 })
 
 var _ = AfterSuite(func() {
-	clusterFixture.TearDown()
+	ctx := context.Background()
+	clusterFixture.TearDown(ctx)
 })
 
 func GetApp(name, namespace string) func() *applicationv1alpha1.App {

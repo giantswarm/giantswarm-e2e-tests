@@ -2,6 +2,7 @@ package fixture
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -35,60 +36,81 @@ type Cluster struct {
 	organizationName    string
 }
 
-func (f *Cluster) SetUp(kubeConfigPath string, kubectlgsParams ...string) {
-	f.managementClusterKubeConfigPath = kubeConfigPath
-
+func (f *Cluster) SetUp(ctx context.Context, kubeConfigPath string, kubectlgsParams ...string) {
 	mcClient, err := getManagementClusterK8sClient(kubeConfigPath)
 	Expect(err).NotTo(HaveOccurred())
-
+	f.managementClusterKubeConfigPath = kubeConfigPath
 	f.managementClusterClient = mcClient
-	f.workloadClusterName = generateName("e2e")
-	f.organizationName = f.workloadClusterName
 
-	clusterFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-cluster-%s-", f.workloadClusterName))
+	name := generateName("e2e")
+	f.organizationName, f.organizationManifestsPath = createOrganization(ctx, mcClient, name, f.getKubeconfigFlag())
+	f.workloadClusterName, f.workloadClusterManifestsPath = createWorkloadCluster(ctx, mcClient, name, f.getKubeconfigFlag(), kubectlgsParams)
+}
+
+func createWorkloadCluster(ctx context.Context, mcClient ctrl.Client, name, kubeconfigFlag string, kubectlgsParams []string) (string, string) {
+	clusterFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-cluster-%s-", name))
 	Expect(err).NotTo(HaveOccurred())
 	defer clusterFile.Close()
-	f.workloadClusterManifestsPath = clusterFile.Name()
 
-	orgFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-org-%s-", f.workloadClusterName))
-	Expect(err).NotTo(HaveOccurred())
-	defer orgFile.Close()
-	f.organizationManifestsPath = orgFile.Name()
-
-	nameFlag := strings.ToLower(fmt.Sprintf("--name=%s", f.workloadClusterName))
-
-	session := kubectl.GS("template", "organization", "--name", f.workloadClusterName, "--output", orgFile.Name())
+	params := []string{"template", "cluster"}
+	params = append(params, kubectlgsParams...)
+	params = append(params, "--organization", name, "--description", "e2e test", strings.ToLower(fmt.Sprintf("--name=%s", name)), kubeconfigFlag, "--output", clusterFile.Name())
+	session := kubectl.GS(params...)
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
-	kubeConfigFlag := f.getKubeconfigFlag()
-	session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", orgFile.Name())
+	session = kubectl.Kubectl(kubeconfigFlag, "apply", "-f", clusterFile.Name())
 	Eventually(session, "10s").Should(gexec.Exit(0))
+
+	Eventually(func() error {
+		clusterApp := &appv1alpha1.App{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: fmt.Sprintf("org-%s", name),
+			},
+		}
+		err := mcClient.Get(ctx, ctrl.ObjectKeyFromObject(clusterApp), clusterApp)
+		if err != nil {
+			return err
+		}
+
+		if clusterApp.Status.Release.Status != "deployed" {
+			return errors.New("cluster app is not 'deployed' yet")
+		}
+
+		return nil
+	}, "10s").Should(Succeed())
+
+	return name, clusterFile.Name()
+}
+
+func createOrganization(ctx context.Context, mcClient ctrl.Client, organizationName, kubeconfigFlag string) (string, string) {
+	orgFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-org-%s-", organizationName))
+	Expect(err).NotTo(HaveOccurred())
+	defer orgFile.Close()
+
+	session := kubectl.GS("template", "organization", "--name", organizationName, "--output", orgFile.Name())
+	Eventually(session, "15s").Should(gexec.Exit(0))
+
+	session = kubectl.Kubectl(kubeconfigFlag, "apply", "-f", orgFile.Name())
+	Eventually(session, "15s").Should(gexec.Exit(0))
 
 	Eventually(func() error {
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("org-%s", f.organizationName),
+				Name: fmt.Sprintf("org-%s", organizationName),
 			},
 		}
-		err := mcClient.Get(context.Background(), ctrl.ObjectKeyFromObject(ns), ns)
+		err := mcClient.Get(ctx, ctrl.ObjectKeyFromObject(ns), ns)
 		return err
 	}).Should(Succeed())
 
-	params := []string{"template", "cluster"}
-	params = append(params, kubectlgsParams...)
-	params = append(params, "--organization", f.organizationName, "--description", "e2e test", nameFlag, kubeConfigFlag, "--output", clusterFile.Name())
-	session = kubectl.GS(params...)
-	Eventually(session, "15s").Should(gexec.Exit(0))
-
-	session = kubectl.Kubectl(kubeConfigFlag, "apply", "-f", clusterFile.Name())
-	Eventually(session, "10s").Should(gexec.Exit(0))
+	return organizationName, orgFile.Name()
 }
 
-func (f *Cluster) TearDown() {
-	ctx := context.Background()
+func (f *Cluster) TearDown(ctx context.Context) {
 	kubeConfigFlag := f.getKubeconfigFlag()
 	session := kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.workloadClusterManifestsPath)
-	Eventually(session, "10s").Should(gexec.Exit(0))
+	Eventually(session, "15s").Should(gexec.Exit(0))
 
 	var getErr error
 	Eventually(func() error {
