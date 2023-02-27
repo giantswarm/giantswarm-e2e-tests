@@ -18,7 +18,7 @@ var _ = Describe("Apps", func() {
 		clusterName := clusterFixture.GetWorkloadClusterName()
 		orgNamespace := clusterFixture.GetOrganizationNamespace()
 		// We need to wait for default-apps to be deployed before we can check all apps.
-		Eventually(GetApp(fmt.Sprintf("%s-%s", clusterName, "default-apps"), orgNamespace), "30m").Should(HaveAppStatus("deployed"))
+		Eventually(clusterFixture.GetApp(ctx, fmt.Sprintf("%s-%s", clusterName, "default-apps"), orgNamespace), "30m").Should(HaveAppStatus("deployed"))
 
 		managementClusterKubeClient := clusterFixture.GetManagementClusterKubeClient()
 		appList := &v1alpha1.AppList{}
@@ -26,7 +26,7 @@ var _ = Describe("Apps", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		for _, app := range appList.Items {
-			Eventually(GetApp(app.Name, app.Namespace), "30m").Should(HaveAppStatus("deployed"))
+			Eventually(clusterFixture.GetApp(ctx, app.Name, app.Namespace), "30m").Should(HaveAppStatus("deployed"))
 		}
 	})
 })

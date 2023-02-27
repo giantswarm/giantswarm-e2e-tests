@@ -2,13 +2,14 @@ package fixture
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
 
 	appv1alpha1 "github.com/giantswarm/apiextensions-application/api/v1alpha1"
+	app2 "github.com/giantswarm/app/v6/pkg/app"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +22,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/giantswarm/giantswarm-e2e-tests/kubectl"
+	. "github.com/giantswarm/giantswarm-e2e-tests/matchers"
 )
 
 type Cluster struct {
@@ -36,62 +38,64 @@ type Cluster struct {
 	organizationName    string
 }
 
-func (f *Cluster) SetUp(ctx context.Context, kubeConfigPath string, kubectlgsParams ...string) {
-	mcClient, err := getManagementClusterK8sClient(kubeConfigPath)
-	Expect(err).NotTo(HaveOccurred())
-	f.managementClusterKubeConfigPath = kubeConfigPath
-	f.managementClusterClient = mcClient
+func NewClusterFixture(managementClusterKubeConfigPath string) Cluster {
+	kubeConfigPath := os.Getenv("E2E_KUBECONFIG_PATH")
+	if kubeConfigPath == "" {
+		log.Fatal("E2E_KUBECONFIG_PATH env var not set")
+	}
 
-	name := generateName("e2e")
-	f.organizationName, f.organizationManifestsPath = createOrganization(ctx, mcClient, name, f.getKubeconfigFlag())
-	f.workloadClusterName, f.workloadClusterManifestsPath = createWorkloadCluster(ctx, mcClient, name, f.getKubeconfigFlag(), kubectlgsParams)
+	mcClient, err := getManagementClusterK8sClient(managementClusterKubeConfigPath)
+	Expect(err).NotTo(HaveOccurred())
+
+	return Cluster{
+		managementClusterClient:         mcClient,
+		managementClusterKubeConfigPath: managementClusterKubeConfigPath,
+	}
 }
 
-func createWorkloadCluster(ctx context.Context, mcClient ctrl.Client, name, kubeconfigFlag string, kubectlgsParams []string) (string, string) {
+func (f *Cluster) SetUp(ctx context.Context, kubectlgsParams ...string) {
+	workloadClusterKubeConfigPath := os.Getenv("E2E_WC_KUBECONFIG_PATH")
+	if workloadClusterKubeConfigPath != "" {
+		f.workloadClusterName = os.Getenv("E2E_WC_NAME")
+		f.organizationName = os.Getenv("E2E_WC_ORG_NAME")
+		return
+	}
+
+	name := generateName("e2e")
+	f.createOrganization(ctx, f.GetManagementClusterKubeClient(), name)
+	f.createWorkloadCluster(ctx, name, kubectlgsParams)
+}
+
+func (f *Cluster) createWorkloadCluster(ctx context.Context, name string, kubectlgsParams []string) {
+	f.workloadClusterName = name
 	clusterFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-cluster-%s-", name))
 	Expect(err).NotTo(HaveOccurred())
+	f.workloadClusterManifestsPath = clusterFile.Name()
 	defer clusterFile.Close()
 
 	params := []string{"template", "cluster"}
 	params = append(params, kubectlgsParams...)
-	params = append(params, "--organization", name, "--description", "e2e test", strings.ToLower(fmt.Sprintf("--name=%s", name)), kubeconfigFlag, "--output", clusterFile.Name())
+	params = append(params, "--organization", name, "--description", "e2e test", strings.ToLower(fmt.Sprintf("--name=%s", name)), f.getKubeconfigFlag(), "--output", clusterFile.Name())
 	session := kubectl.GS(params...)
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
-	session = kubectl.Kubectl(kubeconfigFlag, "apply", "-f", clusterFile.Name())
+	session = kubectl.Kubectl(f.getKubeconfigFlag(), "apply", "-f", clusterFile.Name())
 	Eventually(session, "10s").Should(gexec.Exit(0))
 
-	Eventually(func() error {
-		clusterApp := &appv1alpha1.App{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: fmt.Sprintf("org-%s", name),
-			},
-		}
-		err := mcClient.Get(ctx, ctrl.ObjectKeyFromObject(clusterApp), clusterApp)
-		if err != nil {
-			return err
-		}
-
-		if clusterApp.Status.Release.Status != "deployed" {
-			return errors.New("cluster app is not 'deployed' yet")
-		}
-
-		return nil
-	}, "10s").Should(Succeed())
-
-	return name, clusterFile.Name()
+	Eventually(f.GetApp(ctx, name, fmt.Sprintf("org-%s", name)), "10s").Should(HaveAppStatus("deployed"))
 }
 
-func createOrganization(ctx context.Context, mcClient ctrl.Client, organizationName, kubeconfigFlag string) (string, string) {
+func (f *Cluster) createOrganization(ctx context.Context, mcClient ctrl.Client, organizationName string) (string, string) {
+	f.organizationName = organizationName
 	orgFile, err := os.CreateTemp("", fmt.Sprintf("kubectl-gs-org-%s-", organizationName))
 	Expect(err).NotTo(HaveOccurred())
+	f.organizationManifestsPath = orgFile.Name()
 	defer orgFile.Close()
 
 	session := kubectl.GS("template", "organization", "--name", organizationName, "--output", orgFile.Name())
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
-	session = kubectl.Kubectl(kubeconfigFlag, "apply", "-f", orgFile.Name())
+	session = kubectl.Kubectl(f.getKubeconfigFlag(), "apply", "-f", orgFile.Name())
 	Eventually(session, "15s").Should(gexec.Exit(0))
 
 	Eventually(func() error {
@@ -108,9 +112,14 @@ func createOrganization(ctx context.Context, mcClient ctrl.Client, organizationN
 }
 
 func (f *Cluster) TearDown(ctx context.Context) {
+	workloadClusterKubeConfigPath := os.Getenv("E2E_WC_KUBECONFIG_PATH")
+	if workloadClusterKubeConfigPath != "" {
+		return
+	}
+
 	kubeConfigFlag := f.getKubeconfigFlag()
 	session := kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.workloadClusterManifestsPath)
-	Eventually(session, "15s").Should(gexec.Exit(0))
+	Eventually(session, "30s").Should(gexec.Exit(0))
 
 	var getErr error
 	Eventually(func() error {
@@ -137,7 +146,22 @@ func (f *Cluster) TearDown(ctx context.Context) {
 	Expect(err).ToNot(HaveOccurred())
 
 	session = kubectl.Kubectl(kubeConfigFlag, "delete", "-f", f.organizationManifestsPath)
-	Eventually(session, "10s").Should(gexec.Exit(0))
+	Eventually(session, "30s").Should(gexec.Exit(0))
+}
+
+func (f *Cluster) GetApp(ctx context.Context, name, namespace string) func() *appv1alpha1.App {
+	return func() *appv1alpha1.App {
+		app := app2.NewCR(app2.Config{
+			Name:      name,
+			Namespace: namespace,
+		})
+		err := f.managementClusterClient.Get(ctx, ctrl.ObjectKeyFromObject(app), app)
+		if !k8serrors.IsNotFound(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		return app
+	}
 }
 
 func (f *Cluster) GetWorkloadClusterKubeClient() ctrl.Client {
