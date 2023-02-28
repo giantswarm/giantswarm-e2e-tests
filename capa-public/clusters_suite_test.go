@@ -1,4 +1,4 @@
-package clusters_test
+package capa_public_test
 
 import (
 	"context"
@@ -17,16 +17,19 @@ import (
 
 var (
 	clusterFixture fixture.Cluster
+	ctx            context.Context
 	logger         logr.Logger
 )
 
+var promise = &fixture.Promise{}
+
 func TestClusters(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Clusters Suite")
+	RunSpecs(t, "CAPA Clusters with default values suite")
 }
 
 var _ = BeforeSuite(func() {
-	ctx := context.Background()
+	ctx = context.Background()
 	opts := zap.Options{
 		DestWriter:  GinkgoWriter,
 		Development: true,
@@ -35,10 +38,13 @@ var _ = BeforeSuite(func() {
 	logger = zap.New(zap.UseFlagOptions(&opts))
 
 	clusterFixture = fixture.NewClusterFixture(os.Getenv("E2E_KUBECONFIG_PATH"))
-	clusterFixture.SetUp(ctx, "--provider", "capa")
+	clusterFixture.SetUp(ctx, logger, "--provider", "capa")
+
+	// We need to set the cluster fixture into our promise so that tests can use it
+	promise.Cluster = &clusterFixture
 })
 
 var _ = AfterSuite(func() {
-	ctx := context.Background()
-	clusterFixture.TearDown(ctx)
+	clusterFixture.TearDown(ctx, logger)
+	promise.Cluster = nil
 })
