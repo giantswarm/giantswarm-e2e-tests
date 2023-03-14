@@ -11,12 +11,13 @@ import (
 
 	"github.com/giantswarm/clustertest"
 	"github.com/giantswarm/clustertest/pkg/application"
+	"github.com/giantswarm/clustertest/pkg/organization"
+	"github.com/giantswarm/clustertest/pkg/utils"
 )
 
 var (
-	framework   *clustertest.Framework
-	clusterName *string
-	namespace   *string
+	framework *clustertest.Framework
+	cluster   *application.Cluster
 )
 
 func TestCAPA(t *testing.T) {
@@ -28,26 +29,29 @@ func TestCAPA(t *testing.T) {
 		panic(err)
 	}
 
-	clusterName = clustertest.StringToPointer(clustertest.GenerateRandomName("t"))
-	framework.Log("Workload cluster name: %s\n", *clusterName)
-	namespace = clustertest.StringToPointer("org-giantswarm")
+	cluster = application.NewClusterApp(utils.GenerateRandomName("t"), application.ProviderAWS).
+		WithOrg(organization.NewRandomOrg()).
+		WithAppVersions("", ""). // If not set, the latest is fetched
+		WithAppValuesFile(path.Clean("./test_data/cluster_values.yaml"), path.Clean("./test_data/default-apps_values.yaml"))
+
+	framework.Log("Workload cluster name: %s\n", cluster.Name)
 
 	BeforeSuite(func() {
-		timeoutCtx, cancelTimeout := context.WithTimeout(ctx, 20*time.Minute)
-		defer cancelTimeout()
+		applyCtx, cancelApplyCtx := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancelApplyCtx()
 
-		_, err := framework.ApplyCluster(
-			timeoutCtx,
-			application.NewClusterApp(*clusterName, application.ProviderAWS).
-				WithNamespace(*namespace).
-				WithAppVersions("", ""). // If not set, the latest is fetched
-				WithAppValuesFile(path.Clean("./test_data/cluster_values.yaml"), path.Clean("./test_data/default-apps_values.yaml")),
-		)
+		client, err := framework.ApplyCluster(applyCtx, cluster)
+		Expect(err).To(BeNil())
+
+		nodeCtx, cancelNodeCtx := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancelNodeCtx()
+
+		err = client.WaitForControlPlane(nodeCtx, 3)
 		Expect(err).To(BeNil())
 	})
 
 	AfterSuite(func() {
-		err := framework.DeleteCluster(ctx, *clusterName, *namespace)
+		err := framework.DeleteCluster(ctx, cluster)
 		Expect(err).To(BeNil())
 	})
 
