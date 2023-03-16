@@ -3,7 +3,7 @@ module github.com/giantswarm/giantswarm-e2e-tests
 go 1.19
 
 require (
-	github.com/giantswarm/clustertest v0.0.0-20230314090945-1839cce61fbe
+	github.com/giantswarm/clustertest v0.0.0-20230316100933-fa3dbc91c2c1
 	github.com/onsi/ginkgo/v2 v2.9.0
 	github.com/onsi/gomega v1.27.2
 )
@@ -24,6 +24,7 @@ require (
 	github.com/giantswarm/organization-operator v1.0.5 // indirect
 	github.com/giantswarm/release-operator/v4 v4.0.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/go-logr/zapr v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
@@ -54,6 +55,9 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	go.uber.org/atomic v1.10.0 // indirect
+	go.uber.org/multierr v1.8.0 // indirect
+	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.3.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
@@ -84,3 +88,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+// replace github.com/giantswarm/clustertest => /Users/marcus/Code/GiantSwarm/clustertest
