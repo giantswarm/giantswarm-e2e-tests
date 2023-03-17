@@ -1,4 +1,4 @@
-package capa_test
+package capg_test
 
 import (
 	"context"
@@ -24,7 +24,7 @@ var (
 	cluster   *application.Cluster
 )
 
-func TestCAPA(t *testing.T) {
+func TestCAPG(t *testing.T) {
 	var err error
 	ctx := context.Background()
 
@@ -34,7 +34,7 @@ func TestCAPA(t *testing.T) {
 	}
 	logger.LogWriter = GinkgoWriter
 
-	cluster = application.NewClusterApp(utils.GenerateRandomName("t"), application.ProviderAWS).
+	cluster = application.NewClusterApp(utils.GenerateRandomName("t"), application.ProviderGCP).
 		WithOrg(organization.NewRandomOrg()).
 		WithAppVersions("", ""). // If not set, the latest is fetched
 		WithAppValuesFile(path.Clean("./test_data/cluster_values.yaml"), path.Clean("./test_data/default-apps_values.yaml"))
@@ -61,5 +61,5 @@ func TestCAPA(t *testing.T) {
 	})
 
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "CAPA Suite")
+	RunSpecs(t, "CAPG Suite")
 }
