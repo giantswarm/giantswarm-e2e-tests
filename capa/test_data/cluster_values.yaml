@@ -1,0 +1,16 @@
+clusterName: "{{ .ClusterName }}"
+clusterDescription: "E2E Test cluster"
+organization: "{{ .Organization }}"
+
+aws: {}
+bastion: {}
+controlPlane:
+  replicas: 3
+machinePools:
+  machine-pool0:
+    instanceType: m5.xlarge
+    maxSize: 10
+    minSize: 3
+    rootVolumeSizeGB: 300
+network:
+  availabilityZoneUsageLimit: 3
